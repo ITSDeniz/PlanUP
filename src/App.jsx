@@ -1,7 +1,9 @@
 import { useEffect, useId, useMemo, useState } from "react";
 import {
+  CalendarDays,
   Check,
   ChevronDown,
+  ChevronLeft,
   ChevronRight,
   Circle,
   ClipboardList,
@@ -27,6 +29,23 @@ function loadTasks() {
   }
 }
 
+function formatDateKey(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function formatReadableDate(dateKey) {
+  if (!dateKey) return "No due date";
+  const [year, month, day] = dateKey.split("-").map(Number);
+  return new Date(year, month - 1, day).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
 function IconButton({ label, children, className = "", ...props }) {
   return (
     <button
@@ -46,25 +65,34 @@ function TaskForm({
   placeholder,
   buttonLabel,
   initialValue = "",
+  initialDate = "",
+  showDate = false,
   compact = false,
   onSubmit,
   onCancel,
 }) {
   const inputId = useId();
+  const dateId = useId();
   const [title, setTitle] = useState(initialValue);
+  const [dueDate, setDueDate] = useState(initialDate);
 
   function handleSubmit(event) {
     event.preventDefault();
     const trimmed = title.trim();
     if (!trimmed) return;
-    onSubmit(trimmed);
-    if (!initialValue) setTitle("");
+    onSubmit(trimmed, dueDate);
+    if (!initialValue) {
+      setTitle("");
+      setDueDate("");
+    }
   }
 
   return (
     <form
       onSubmit={handleSubmit}
-      className={`flex gap-2 ${compact ? "items-center" : "items-stretch"}`}
+      className={`flex gap-2 ${
+        compact ? "items-center" : "flex-col sm:flex-row sm:items-stretch"
+      }`}
     >
       <label className="sr-only" htmlFor={inputId}>
         {label}
@@ -76,6 +104,24 @@ function TaskForm({
         placeholder={placeholder}
         className="min-w-0 flex-1 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
       />
+      {showDate ? (
+        <div className="relative shrink-0 sm:w-44">
+          <label className="sr-only" htmlFor={dateId}>
+            Due date
+          </label>
+          <CalendarDays
+            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+            size={16}
+          />
+          <input
+            id={dateId}
+            type="date"
+            value={dueDate}
+            onChange={(event) => setDueDate(event.target.value)}
+            className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 py-2 pl-9 text-sm text-slate-900 outline-none transition focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
+          />
+        </div>
+      ) : null}
       <button
         type="submit"
         aria-label={buttonLabel}
@@ -110,6 +156,122 @@ function ProgressBar({ completed, total }) {
         />
       </div>
     </div>
+  );
+}
+
+function CalendarView({ tasks, monthDate, onChangeMonth }) {
+  const monthStart = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1);
+  const firstDay = monthStart.getDay();
+  const daysInMonth = new Date(
+    monthDate.getFullYear(),
+    monthDate.getMonth() + 1,
+    0
+  ).getDate();
+  const monthLabel = monthStart.toLocaleDateString(undefined, {
+    month: "long",
+    year: "numeric",
+  });
+  const todayKey = formatDateKey(new Date());
+  const tasksByDate = tasks.reduce((groups, task) => {
+    if (!task.dueDate) return groups;
+    return { ...groups, [task.dueDate]: [...(groups[task.dueDate] || []), task] };
+  }, {});
+  const cells = [
+    ...Array.from({ length: firstDay }, () => null),
+    ...Array.from({ length: daysInMonth }, (_, index) => index + 1),
+  ];
+
+  return (
+    <section className="mb-5 rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 className="text-lg font-semibold text-slate-950">Calendar</h2>
+          <p className="text-sm text-slate-500">Tasks grouped by due date</p>
+        </div>
+        <div className="flex items-center justify-between gap-2 sm:justify-end">
+          <IconButton
+            label="Previous month"
+            onClick={() =>
+              onChangeMonth(
+                new Date(monthDate.getFullYear(), monthDate.getMonth() - 1, 1)
+              )
+            }
+          >
+            <ChevronLeft size={18} />
+          </IconButton>
+          <p className="min-w-32 text-center text-sm font-semibold text-slate-800">
+            {monthLabel}
+          </p>
+          <IconButton
+            label="Next month"
+            onClick={() =>
+              onChangeMonth(
+                new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 1)
+              )
+            }
+          >
+            <ChevronRight size={18} />
+          </IconButton>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-7 gap-1 text-center text-xs font-semibold uppercase text-slate-400">
+        {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
+          <div key={day} className="py-2">
+            {day}
+          </div>
+        ))}
+      </div>
+      <div className="grid grid-cols-7 gap-1">
+        {cells.map((day, index) => {
+          if (!day) {
+            return <div key={`empty-${index}`} className="min-h-24 rounded-md" />;
+          }
+
+          const dateKey = formatDateKey(
+            new Date(monthDate.getFullYear(), monthDate.getMonth(), day)
+          );
+          const dayTasks = tasksByDate[dateKey] || [];
+          const isToday = dateKey === todayKey;
+
+          return (
+            <div
+              key={dateKey}
+              className={`min-h-24 rounded-md border p-2 text-left ${
+                isToday
+                  ? "border-teal-400 bg-teal-50"
+                  : "border-slate-200 bg-slate-50/70"
+              }`}
+            >
+              <div className="mb-1 flex items-center justify-between">
+                <span className="text-sm font-semibold text-slate-800">{day}</span>
+                {dayTasks.length > 0 ? (
+                  <span className="rounded-full bg-teal-600 px-1.5 py-0.5 text-[10px] font-bold text-white">
+                    {dayTasks.length}
+                  </span>
+                ) : null}
+              </div>
+              <div className="space-y-1">
+                {dayTasks.slice(0, 2).map((task) => (
+                  <p
+                    key={task.id}
+                    className="truncate rounded bg-white px-1.5 py-1 text-xs font-medium text-slate-700"
+                    title={task.title}
+                  >
+                    {task.title}
+                  </p>
+                ))}
+                {dayTasks.length > 2 ? (
+                  <p className="text-xs font-medium text-slate-500">
+                    +{dayTasks.length - 2} more
+                  </p>
+                ) : null}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </section>
   );
 }
 
@@ -236,9 +398,11 @@ function TaskCard({
                 placeholder="Main task title"
                 buttonLabel="Save"
                 initialValue={task.title}
+                initialDate={task.dueDate || ""}
+                showDate
                 compact
-                onSubmit={(title) => {
-                  onEditTask(task.id, title);
+                onSubmit={(title, dueDate) => {
+                  onEditTask(task.id, title, dueDate);
                   setIsEditing(false);
                 }}
                 onCancel={() => setIsEditing(false)}
@@ -253,6 +417,10 @@ function TaskCard({
                 <p className="mt-1 text-sm text-slate-500">
                   {task.subtasks.length} sub-task
                   {task.subtasks.length === 1 ? "" : "s"}
+                </p>
+                <p className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-slate-500">
+                  <CalendarDays size={14} />
+                  {formatReadableDate(task.dueDate)}
                 </p>
               </div>
               <IconButton label="Edit task" onClick={() => setIsEditing(true)}>
@@ -311,6 +479,9 @@ function TaskList(props) {
 
 export default function App() {
   const [tasks, setTasks] = useState(loadTasks);
+  const [calendarMonth, setCalendarMonth] = useState(
+    () => new Date(new Date().getFullYear(), new Date().getMonth(), 1)
+  );
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks));
@@ -326,11 +497,12 @@ export default function App() {
     return { totalTasks: tasks.length, totalSubtasks, completedSubtasks };
   }, [tasks]);
 
-  function addTask(title) {
+  function addTask(title, dueDate) {
     setTasks((current) => [
       {
         id: createId(),
         title,
+        dueDate,
         isOpen: true,
         subtasks: [],
       },
@@ -338,9 +510,11 @@ export default function App() {
     ]);
   }
 
-  function editTask(taskId, title) {
+  function editTask(taskId, title, dueDate) {
     setTasks((current) =>
-      current.map((task) => (task.id === taskId ? { ...task, title } : task))
+      current.map((task) =>
+        task.id === taskId ? { ...task, title, dueDate } : task
+      )
     );
   }
 
@@ -453,9 +627,16 @@ export default function App() {
             label="Add main task"
             placeholder="Create a main task"
             buttonLabel="Add Task"
+            showDate
             onSubmit={addTask}
           />
         </section>
+
+        <CalendarView
+          tasks={tasks}
+          monthDate={calendarMonth}
+          onChangeMonth={setCalendarMonth}
+        />
 
         <TaskList
           tasks={tasks}
