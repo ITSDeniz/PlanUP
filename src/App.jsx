@@ -146,7 +146,9 @@ function ProgressBar({ completed, total }) {
   return (
     <div aria-label={`${percent}% complete`} className="space-y-2">
       <div className="flex items-center justify-between text-xs font-medium text-slate-500">
-        <span>{completed} completed</span>
+        <span>
+          {completed}/{total} completed
+        </span>
         <span>{percent}%</span>
       </div>
       <div className="h-2 overflow-hidden rounded-full bg-slate-200">
@@ -369,6 +371,7 @@ function SubtaskList({
 function TaskCard({
   task,
   onToggleOpen,
+  onToggleTask,
   onEditTask,
   onDeleteTask,
   onAddSubtask,
@@ -377,12 +380,23 @@ function TaskCard({
   onDeleteSubtask,
 }) {
   const [isEditing, setIsEditing] = useState(false);
-  const completedCount = task.subtasks.filter((subtask) => subtask.completed).length;
+  const completedCount = (task.completed ? 1 : 0) + task.subtasks.filter((subtask) => subtask.completed).length;
+  const totalCount = 1 + task.subtasks.length;
 
   return (
     <article className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
       <div className="space-y-4 p-4 sm:p-5">
         <div className="flex items-start gap-3">
+          <IconButton
+            label={task.completed ? "Mark incomplete" : "Mark complete"}
+            className={`mt-0.5 ${
+              task.completed ? "bg-teal-50 text-teal-700 hover:text-teal-800" : ""
+            }`}
+            onClick={() => onToggleTask(task.id)}
+          >
+            {task.completed ? <Check size={19} /> : <Circle size={19} />}
+          </IconButton>
+
           <IconButton
             label={task.isOpen ? "Collapse sub-tasks" : "Expand sub-tasks"}
             className="mt-0.5"
@@ -411,7 +425,11 @@ function TaskCard({
           ) : (
             <>
               <div className="min-w-0 flex-1">
-                <h2 className="truncate text-base font-semibold text-slate-950 sm:text-lg">
+                <h2
+                  className={`truncate text-base font-semibold sm:text-lg ${
+                    task.completed ? "text-slate-400 line-through" : "text-slate-950"
+                  }`}
+                >
                   {task.title}
                 </h2>
                 <p className="mt-1 text-sm text-slate-500">
@@ -437,7 +455,7 @@ function TaskCard({
           )}
         </div>
 
-        <ProgressBar completed={completedCount} total={task.subtasks.length} />
+        <ProgressBar completed={completedCount} total={totalCount} />
       </div>
 
       {task.isOpen ? (
@@ -488,13 +506,19 @@ export default function App() {
   }, [tasks]);
 
   const stats = useMemo(() => {
+    const completedTasks = tasks.filter((task) => task.completed).length;
     const totalSubtasks = tasks.reduce((total, task) => total + task.subtasks.length, 0);
     const completedSubtasks = tasks.reduce(
       (total, task) =>
         total + task.subtasks.filter((subtask) => subtask.completed).length,
       0
     );
-    return { totalTasks: tasks.length, totalSubtasks, completedSubtasks };
+    return {
+      totalTasks: tasks.length,
+      completedTasks,
+      totalSubtasks,
+      completedSubtasks,
+    };
   }, [tasks]);
 
   function addTask(title, dueDate) {
@@ -504,6 +528,7 @@ export default function App() {
         title,
         dueDate,
         isOpen: true,
+        completed: false,
         subtasks: [],
       },
       ...current,
@@ -526,6 +551,14 @@ export default function App() {
     setTasks((current) =>
       current.map((task) =>
         task.id === taskId ? { ...task, isOpen: !task.isOpen } : task
+      )
+    );
+  }
+  
+  function toggleTask(taskId) {
+    setTasks((current) =>
+      current.map((task) =>
+        task.id === taskId ? { ...task, completed: !task.completed } : task
       )
     );
   }
@@ -615,7 +648,7 @@ export default function App() {
             </div>
             <div className="rounded-md bg-slate-50 px-3 py-2">
               <p className="text-lg font-bold text-slate-950">
-                {stats.completedSubtasks}
+                {stats.completedTasks + stats.completedSubtasks}
               </p>
               <p className="text-xs font-medium text-slate-500">Done</p>
             </div>
@@ -641,6 +674,7 @@ export default function App() {
         <TaskList
           tasks={tasks}
           onToggleOpen={toggleOpen}
+          onToggleTask={toggleTask}
           onEditTask={editTask}
           onDeleteTask={deleteTask}
           onAddSubtask={addSubtask}
